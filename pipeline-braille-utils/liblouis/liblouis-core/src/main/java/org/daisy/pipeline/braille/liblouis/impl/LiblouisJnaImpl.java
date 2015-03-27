@@ -10,6 +10,7 @@ import java.util.Locale;
 import java.util.Map;
 
 import com.google.common.base.Function;
+import static com.google.common.base.Objects.toStringHelper;
 import com.google.common.base.Optional;
 import com.google.common.base.Predicates;
 import com.google.common.base.Splitter;
@@ -19,6 +20,8 @@ import static org.daisy.braille.css.Query.parseQuery;
 import org.daisy.pipeline.braille.common.BundledNativePath;
 import org.daisy.pipeline.braille.common.Hyphenator;
 import org.daisy.pipeline.braille.common.Provider;
+import static org.daisy.pipeline.braille.common.Transform.Provider.util.logCreate;
+import static org.daisy.pipeline.braille.common.Transform.Provider.util.logSelect;
 import org.daisy.pipeline.braille.common.TextTransform;
 import static org.daisy.pipeline.braille.common.util.Files.asFile;
 import static org.daisy.pipeline.braille.common.util.Locales.parseLocale;
@@ -193,7 +196,7 @@ public class LiblouisJnaImpl implements LiblouisTranslator.Provider {
 						if (t.toString().endsWith(".dic")) {
 							try {
 								translators = Optional.<LiblouisTranslator>fromNullable(
-									new LiblouisTranslatorHyphenatorImpl(table)
+									logCreate(new LiblouisTranslatorHyphenatorImpl(table), logger)
 								).asSet(); }
 							catch (CompilationException e) {
 								logger.warn("Could not create translator for table: " + Arrays.toString(table), e); }
@@ -208,7 +211,7 @@ public class LiblouisJnaImpl implements LiblouisTranslator.Provider {
 							hyphenators.get(hyphenatorQuery),
 							new Function<Hyphenator,LiblouisTranslator>() {
 								public LiblouisTranslator apply(Hyphenator hyphenator) {
-									try { return new LiblouisTranslatorImpl(table, hyphenator); }
+									try { return logCreate(new LiblouisTranslatorImpl(table, hyphenator), logger); }
 									catch (CompilationException e) {
 										logger.warn("Could not create translator for table: " + Arrays.toString(table), e); }
 									return null; }}),
@@ -216,7 +219,7 @@ public class LiblouisJnaImpl implements LiblouisTranslator.Provider {
 			try {
 				translators = Iterables.<LiblouisTranslator>concat(
 					translators,
-					Optional.<LiblouisTranslator>fromNullable(new LiblouisTranslatorImpl(table)).asSet()); }
+					Optional.<LiblouisTranslator>fromNullable(logCreate(new LiblouisTranslatorImpl(table), logger)).asSet()); }
 			catch (CompilationException e) {
 				logger.warn("Could not create translator for table: " + Arrays.toString(table), e); }
 			return translators; }
@@ -247,14 +250,14 @@ public class LiblouisJnaImpl implements LiblouisTranslator.Provider {
 				return empty; }};
 	
 	public Iterable<LiblouisTranslator> get(String query) {
-		return provider.get(query);
+		return logSelect(query, provider.get(query), logger);
 	}
 	
 	private static class LiblouisTranslatorImpl extends LiblouisTranslator {
 		
 		private final URI[] table;
 		protected final Translator translator;
-		private final Hyphenator hyphenator;
+		protected Hyphenator hyphenator;
 		
 		/**
 		 * A liblouis table is a list of URIs that can be either a file name, a
@@ -450,12 +453,20 @@ public class LiblouisJnaImpl implements LiblouisTranslator.Provider {
 			catch (TranslationException e) {
 				throw new RuntimeException(e); }
 		}
+		
+		@Override
+		public String toString() {
+			return toStringHelper(this).add("translator", translator)
+			                           .add("hyphenator", (this == hyphenator) ? "self" : hyphenator)
+			                           .toString();
+		}
 	}
 	
 	private static class LiblouisTranslatorHyphenatorImpl extends LiblouisTranslatorImpl implements Hyphenator {
 		
 		private LiblouisTranslatorHyphenatorImpl(URI[] table) throws CompilationException {
 			super(table);
+			hyphenator = this;
 		}
 		
 		@Override

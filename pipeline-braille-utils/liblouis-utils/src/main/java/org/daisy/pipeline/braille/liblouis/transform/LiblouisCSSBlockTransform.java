@@ -4,9 +4,11 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.NoSuchElementException;
 import java.net.URI;
 import javax.xml.namespace.QName;
 
+import static com.google.common.base.Objects.toStringHelper;
 import com.google.common.base.Optional;
 import com.google.common.collect.ImmutableMap;
 
@@ -16,6 +18,8 @@ import org.daisy.pipeline.braille.common.Cached;
 import static org.daisy.pipeline.braille.common.util.Tuple3;
 import static org.daisy.pipeline.braille.common.util.URIs.asURI;
 import org.daisy.pipeline.braille.common.CSSBlockTransform;
+import static org.daisy.pipeline.braille.common.Transform.Provider.util.logCreate;
+import static org.daisy.pipeline.braille.common.Transform.Provider.util.logSelect;
 import org.daisy.pipeline.braille.common.XProcTransform;
 import org.daisy.pipeline.braille.liblouis.LiblouisTranslator;
 
@@ -25,6 +29,9 @@ import org.osgi.service.component.annotations.Reference;
 import org.osgi.service.component.annotations.ReferenceCardinality;
 import org.osgi.service.component.annotations.ReferencePolicy;
 import org.osgi.service.component.ComponentContext;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public interface LiblouisCSSBlockTransform extends CSSBlockTransform, XProcTransform {
 	
@@ -53,7 +60,7 @@ public interface LiblouisCSSBlockTransform extends CSSBlockTransform, XProcTrans
 		 * Other features are used for finding sub-transformers of type LiblouisTranslator.
 		 */
 		public Iterable<LiblouisCSSBlockTransform> get(String query) {
-			return Optional.<LiblouisCSSBlockTransform>fromNullable(transforms.get(query)).asSet();
+			return logSelect(query, Optional.<LiblouisCSSBlockTransform>fromNullable(transforms.get(query)).asSet(), logger);
 		}
 		
 		private Cached<String,LiblouisCSSBlockTransform> transforms
@@ -66,12 +73,23 @@ public interface LiblouisCSSBlockTransform extends CSSBlockTransform, XProcTrans
 					if (!o.get().equals("liblouis"))
 						return null;
 				String newQuery = serializeQuery(q);
-				if (!liblouisTranslatorProvider.get(newQuery).iterator().hasNext())
-					return null;
-				final Map<String,String> options = ImmutableMap.<String,String>of("query", newQuery);
-				return new LiblouisCSSBlockTransform() {
-					public Tuple3<URI,QName,Map<String,String>> asXProc() {
-						return new Tuple3<URI,QName,Map<String,String>>(href, null, options); }};
+				try {
+					final LiblouisTranslator translator = liblouisTranslatorProvider.get(newQuery).iterator().next();
+					final Map<String,String> options = ImmutableMap.<String,String>of("query", newQuery);
+					return logCreate(
+						new LiblouisCSSBlockTransform() {
+							public Tuple3<URI,QName,Map<String,String>> asXProc() {
+								return new Tuple3<URI,QName,Map<String,String>>(href, null, options);
+							}
+							@Override
+							public String toString() {
+								return toStringHelper(LiblouisCSSBlockTransform.class.getSimpleName()).add("translator", translator).toString();
+							}
+						},
+						logger
+					);
+				} catch (NoSuchElementException e) {}
+				return null;
 			}
 		};
 		
@@ -95,6 +113,8 @@ public interface LiblouisCSSBlockTransform extends CSSBlockTransform, XProcTrans
 		private CachedProvider<String,LiblouisTranslator> liblouisTranslatorProvider
 		= CachedProvider.<String,LiblouisTranslator>newInstance(
 			DispatchingProvider.<String,LiblouisTranslator>newInstance(liblouisTranslatorProviders));
+		
+		private static final Logger logger = LoggerFactory.getLogger(Provider.class);
 		
 	}
 }

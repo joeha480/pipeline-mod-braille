@@ -1,5 +1,10 @@
 package org.daisy.pipeline.braille.common;
 
+import java.util.Iterator;
+import java.util.NoSuchElementException;
+
+import org.slf4j.Logger;
+
 /**
  * Tag interface for anything that can transform a node.
  *
@@ -8,6 +13,45 @@ package org.daisy.pipeline.braille.common;
  */
 public interface Transform {
 	
-	public interface Provider<T extends Transform> extends org.daisy.pipeline.braille.common.Provider<String,T> {}
-	
+	public interface Provider<T extends Transform> extends org.daisy.pipeline.braille.common.Provider<String,T> {
+		
+		public static abstract class util {
+			
+			public static <T extends Transform> T logCreate(T t, Logger logger) {
+				logger.debug("Created " + t);
+				return t;
+			}
+			
+			public static <T extends Transform> Iterable<T> logSelect(final String query, final Iterable<T> iterable, final Logger logger) {
+				return new Iterable<T>() {
+					public Iterator<T> iterator() {
+						return new Iterator<T>() {
+							Iterator<T> i = null;
+							public boolean hasNext() {
+								if (i == null) i = iterable.iterator();
+								return i.hasNext();
+							}
+							public T next() {
+								T t;
+								if (i == null) {
+									i = iterable.iterator();
+									try { t = i.next(); }
+									catch (NoSuchElementException e) {
+										logger.debug("No match for query " + query);
+										throw e; }}
+								else
+									t = i.next();
+								logger.info("Selected " + t + " for query " + query);
+								return t;
+							}
+							public void remove() {
+								if (i == null) i = iterable.iterator();
+								i.remove();
+							}
+						};
+					}
+				};
+			}
+		}
+	}
 }
